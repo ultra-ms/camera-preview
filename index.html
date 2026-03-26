@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam Preview</title>
+    <style>
+        body {
+            font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+            text-align: center;
+            background: #000000;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #252525;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            color: #ffffff;
+        }
+
+        /* Video wrapper - allows scrolling when zoomed */
+        .video-wrapper {
+            overflow: auto;
+            text-align: center;
+            background: #3c3c3c;
+            border-radius: 16px;
+            margin: 20px 0;
+            padding: 10px;
+            min-height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        video {
+            display: block;
+            width: 500px;          /* Base width - adjust as needed */
+            height: auto;
+            background: black;
+            border-radius: 0px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: transform 0.1s ease;
+            transform-origin: center center;
+        }
+
+        /* Controls panel */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0 10px;
+            align-items: flex-end;
+        }
+
+        .control-group {
+            background: #3c3c3c;
+            padding: 12px 18px;
+            border-radius: 16px;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .control-group label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #ffffff;
+        }
+
+        input, button {
+            font-size: 1rem;
+            padding: 8px 16px;
+            border-radius: 40px;
+            border: 1px solid #ffffff;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        input {
+            width: 100px;
+            text-align: center;
+        }
+
+        button {
+            background: #00ac2e;
+            color: #ffffff;
+            border: none;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: #00691c;
+            transform: scale(1.02);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        #pauseBtn {
+            background: #ff7700;
+        }
+        #pauseBtn:hover {
+            background: #923a00;
+        }
+
+        #screenshotBtn {
+            background: #00da9c;
+        }
+        #screenshotBtn:hover {
+            background: #009369;
+        }
+
+        .status {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #959595;
+        }
+
+        @media (max-width: 700px) {
+            video {
+                width: 90%;
+            }
+            .control-group {
+                padding: 8px 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Webcam Preview</h1>
+
+    <div class="video-wrapper">
+        <video id="video" autoplay playsinline muted></video>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>Zoom (Percent)</label>
+            <input type="number" id="zoomInput" value="100" step="10" min="10">
+        </div>
+        <div class="control-group">
+            <label>Pause Video</label>
+            <button id="pauseBtn">Pause</button>
+        </div>
+        <div class="control-group">
+            <label>Take Screenshot</label>
+            <button id="screenshotBtn">Capture & Download</button>
+        </div>
+    </div>
+
+    <div class="status" id="statusMsg">
+        Click "Start" to prompt camera access in your browser.
+    </div>
+    <button id="startBtn" style="margin-top: 10px;">Start</button>
+</div>
+
+<script>
+    // DOM elements
+    const video = document.getElementById('video');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const screenshotBtn = document.getElementById('screenshotBtn');
+    const zoomInput = document.getElementById('zoomInput');
+    const statusDiv = document.getElementById('statusMsg');
+
+    let currentStream = null;      // Keep reference to the media stream
+    let isPaused = false;
+
+    // --- Helper: update zoom scale based on input value ---
+    function updateZoom() {
+        let percent = parseFloat(zoomInput.value);
+        if (isNaN(percent)) percent = 100;
+        percent = Math.min(Math.max(percent, 10), 500); // limit between 10% and 500%
+        const scale = percent / 100;
+        video.style.transform = `scale(${scale})`;
+        zoomInput.value = percent;   // normalize displayed value
+    }
+
+    // --- Start camera (request permission & display feed) ---
+    async function startCamera() {
+        // Stop any existing stream to avoid multiple feeds
+        if (currentStream) {
+            stopCameraTracks();
+        }
+
+        try {
+            statusDiv.textContent = 'Requesting camera access...';
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            currentStream = stream;
+            video.srcObject = stream;
+            // Ensure video plays (autoplay might be blocked, but we call play() anyway)
+            await video.play();
+            isPaused = false;
+            pauseBtn.textContent = 'Pause';
+            statusDiv.textContent = 'Camera active - use zoom, pause, or screenshot.';
+            // Reset zoom after new stream (keep previous zoom value)
+            updateZoom();
+        } catch (err) {
+            console.error('Camera error:', err);
+            let errorMsg = 'Could not access camera. ';
+            if (err.name === 'NotAllowedError') errorMsg += 'Permission denied.';
+            else if (err.name === 'NotFoundError') errorMsg += 'No camera found.';
+            else errorMsg += 'Please ensure you are using HTTPS or localhost.';
+            statusDiv.textContent = '❌ ' + errorMsg;
+            video.srcObject = null;
+            currentStream = null;
+        }
+    }
+
+    // --- Stop all tracks of the current stream ---
+    function stopCameraTracks() {
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+            currentStream = null;
+        }
+        video.srcObject = null;
+        isPaused = false;
+        pauseBtn.textContent = 'Pause';
+        statusDiv.textContent = 'Camera stopped. Click "Start Camera" to restart.';
+    }
+
+    // --- Pause / Resume the video feed (freeze / unfreeze) ---
+    function togglePause() {
+        if (!currentStream) {
+            statusDiv.textContent = 'No camera active. Start the camera first.';
+            return;
+        }
+        if (isPaused) {
+            video.play();
+            pauseBtn.textContent = 'Pause';
+            statusDiv.textContent = 'Video resumed.';
+        } else {
+            video.pause();
+            pauseBtn.textContent = 'Resume';
+            statusDiv.textContent = 'Video paused - current frame frozen.';
+        }
+        isPaused = !isPaused;
+    }
+
+    // --- Take a screenshot of the current video frame and download it ---
+    function takeScreenshot() {
+        if (!currentStream || video.readyState !== video.HAVE_ENOUGH_DATA) {
+            statusDiv.textContent = 'No camera feed or video not ready.';
+            return;
+        }
+
+        // Use the actual video dimensions (not the CSS scaled ones)
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+
+        if (width === 0 || height === 0) {
+            statusDiv.textContent = 'Video dimensions not available yet.';
+            return;
+        }
+
+        // Create a canvas with the video's intrinsic size
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, width, height);
+
+        // Download as PNG
+        canvas.toBlob((blob) => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `screenshot_${new Date().toISOString().slice(0,19)}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            statusDiv.textContent = '📸 Screenshot saved!';
+        }, 'image/png');
+    }
+
+    // --- Event listeners ---
+    startBtn.addEventListener('click', startCamera);
+    pauseBtn.addEventListener('click', togglePause);
+    screenshotBtn.addEventListener('click', takeScreenshot);
+    zoomInput.addEventListener('input', updateZoom);
+
+    // Optional: if user presses Enter in zoom field, update anyway (already on input)
+    // Initial zoom setup (will apply when camera starts)
+    updateZoom();
+
+    // Additional check: if camera is already running when page loads? We'll require user to click Start.
+    // This gives a clear permission prompt and avoids autoplay issues.
+</script>
+</body>
+</html>
